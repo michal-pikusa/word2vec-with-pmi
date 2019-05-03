@@ -22,6 +22,7 @@ To find similar words with a trained model, use:
 python find_nn.py wiki your_word
 ```
 This will print a list of the most similar words from the corpus along with the cosine similarity measure.
+![Alt Text](https://media.giphy.com/media/ZY92lg3aobje4arYD1/giphy.gif)
 
 ## Author
 Scripts written and maintained by Michal Pikusa (pikusa.michal@gmail.com)
