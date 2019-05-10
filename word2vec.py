@@ -19,6 +19,9 @@ from numpy import inf
 import h5py
 from multiprocessing.dummy import Pool as ThreadPool
 from sklearn import random_projection
+from nltk.util import skipgrams
+import ahocorasick
+import string
 
 def main():
     # Start the counter
@@ -32,7 +35,7 @@ def main():
     window_size = 2
     skipgram_list = []
     def read_words(inputfile):
-        with open(inputfile, 'r') as f:
+        with open(inputfile, 'r',encoding='utf-8') as f:
             while True:
                 buf = f.read(102400)
                 if not buf:
@@ -46,17 +49,21 @@ def main():
                 for word in words:
                     yield word
             yield ''
-
-    for word in read_words(corpus_file):
-        # if no_words > window_size:
-        #     for i in range(1,window_size):
-        #         skipgram_list.append((word,merged[no_words-i]))
-        merged.append(word)
-        no_words += 1
-        if no_words % 1000000 == 0:
-        	sys.stdout.write("\rWords: %iM" % int(no_words/1000000))
-        	sys.stdout.flush()
+    no_lines = 0
     
+    line_tokens = []
+    for word in read_words(corpus_file):
+        no_lines += 1
+        if '.' not in word:
+            line_tokens.append(word.translate(str.maketrans('', '', string.punctuation)))
+        else:
+            line_tokens.append(word.translate(str.maketrans('', '', string.punctuation)))
+            merged.append(line_tokens)
+            line_tokens = []
+        if no_lines % 100000 == 0:
+        	sys.stdout.write("\rWords: %i" % int(no_lines))
+        	sys.stdout.flush()
+
     # Function to create a dataframe with counts and probabilities
     def create_count_df(list_to_count,skipgrams,sample_rate):
         list_with_counts = collections.Counter(list_to_count)
@@ -97,19 +104,24 @@ def main():
     # Create the list of unigrams with the count and normalize probability
     print("\nCreating the list of unigrams...")
     sample_rate = 0.001
-    unigram_df, tokens = create_count_df(merged,False,sample_rate)
-    del merged
+    unigram_df, tokens = create_count_df([item for sublist in merged for item in sublist],False,sample_rate)
     print("# unigrams: ", unigram_df.shape[0])
     print("Creating the list of skipgrams...")
     no_words = 0
-    for i in range(0,len(tokens)):
-        for j in range(1,window_size):
-                skipgram_list.append((tokens[i],tokens[i-j]))
-        if no_words % 1000000 == 0:
-        	sys.stdout.write("\rProgress: %.2f %%" % float(no_words/len(tokens))*100)
-        	sys.stdout.flush()
-        no_words += 1
+    A = ahocorasick.Automaton()
+    for idx, key in enumerate(tokens):
+        A.add_word(key, (idx, key))
+    for line_counter,line in enumerate(merged):
+        line_skipgrams = list(skipgrams(line, window_size, window_size))
+        for skipgram in line_skipgrams:
+            if (skipgram[0] in A) and (skipgram[1] in A):
+                skipgram_list.append(skipgram)
+        if no_lines % 100000 == 0:
+            sys.stdout.write("\rWords: %i" % int(no_words))
+            sys.stdout.flush()
+            no_words += len(line)
     del tokens
+    del merged
     print("\nCreating skipgram data frame...")
     skipgram_df = create_count_df(skipgram_list,True,sample_rate)
     print("# skipgrams: ", skipgram_df.shape[0])
@@ -164,8 +176,6 @@ def main():
     unigram_df = unigram_df.reset_index()
     word_list = unigram_df['word'].tolist()
     del unigram_df
-    print(skipgram_df.info(memory_usage='deep'))
-    print((output_vectors.nbytes/1024)/1024)
 
     #  Initialize the weights
     print("\nInitializing the network...")
